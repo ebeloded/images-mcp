@@ -39,26 +39,27 @@ The prompt can also be passed as positional args or piped via stdin.
 
 | Flag             | Default         | Values                                |
 |------------------|-----------------|---------------------------------------|
-| `--model`        | gpt-image-2     | gpt-image-2, gpt-image-1.5            |
+| `--model`        | gpt-image-2     | gpt-image-2, gpt-image-2-2026-04-21, gpt-image-1.5 |
 | `--size`         | auto            | auto, 1024x1024, 1536x1024, 1024x1536, 2048x2048, 2048x1152, 3840x2160, 2160x3840 |
 | `--quality`      | auto            | auto, high, medium, low               |
-| `--background`   | auto            | auto, transparent, opaque (transparent not supported on gpt-image-2) |
+| `--background`   | auto            | auto, transparent, opaque (transparent requires GPT Image 1.5 and PNG/WebP) |
 
 ### Gemini
 
 | Flag             | Default                          | Values                                                       |
 |------------------|----------------------------------|--------------------------------------------------------------|
-| `--model`        | gemini-3.1-flash-image-preview   | gemini-2.5-flash-image, gemini-3-pro-image-preview, gemini-3.1-flash-image-preview |
+| `--model`        | gemini-3.1-flash-image           | gemini-2.5-flash-image, gemini-3-pro-image, gemini-3.1-flash-image, gemini-3.1-flash-lite-image |
 | `--aspect-ratio` | (none)                           | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9       |
-| `--image-size`   | (none)                           | 1K, 2K, 4K                                                  |
+| `--image-size`   | (none)                           | 512, 1K, 2K, 4K                                             |
 
 ### Grok
 
 | Flag             | Default        | Values                                                                                         |
 |------------------|----------------|------------------------------------------------------------------------------------------------|
-| `--model`        | grok-2-image   | grok-2-image                                                                                   |
-| `--aspect-ratio` | (none)         | 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 2:1, 1:2, 19.5:9, 9:19.5, 20:9, 9:20                   |
+| `--model`        | grok-imagine-image-2.0 | grok-imagine-image-2.0, grok-imagine-image-quality, grok-imagine-image, grok-2-image |
+| `--aspect-ratio` | (none)         | auto, 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 2:1, 1:2, 19.5:9, 9:19.5, 20:9, 9:20, 21:9, 5:2 |
 | `--resolution`   | (none)         | 1k, 2k                                                                                        |
+| `--quality`      | (none)         | low, medium (grok-imagine-image-2.0 only)                                                     |
 
 ## Examples
 
@@ -89,7 +90,7 @@ echo "a peaceful garden" | image-gen gemini -o ./garden.png
 
 High quality transparent PNG:
 ```bash
-image-gen openai -p "logo of a rocket" -o ./logo.png --quality high --background transparent
+image-gen openai -p "logo of a rocket" -o ./logo.png --model gpt-image-1.5 --quality high --background transparent
 ```
 
 ## Key management

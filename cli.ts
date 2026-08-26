@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import tty from "node:tty";
+import { extname } from "node:path";
 import { getGeminiApiKey, getGrokApiKey, getOpenAIApiKey } from "./config.ts";
 import {
   generateGeminiImage,
@@ -23,6 +24,7 @@ import {
   grokAspectRatioSchema,
   grokModelSchema,
   grokParamsSchema,
+  grokQualitySchema,
   grokResolutionSchema,
   openAIBackgroundSchema,
   openAIModelSchema,
@@ -303,6 +305,16 @@ function parseOpenAIArgs(state: ParseState): ParsedArgs {
     };
   }
 
+  if (validated.data.background === "transparent") {
+    if (validated.data.model === "gpt-image-2" || validated.data.model === "gpt-image-2-2026-04-21") {
+      return { mode: "help", message: `Invalid --background for ${validated.data.model}: transparent backgrounds are not supported` };
+    }
+    const outputExtension = extname(validated.data.output_path).toLowerCase();
+    if (outputExtension !== ".png" && outputExtension !== ".webp") {
+      return { mode: "help", message: "Invalid --background transparent: output must use .png or .webp" };
+    }
+  }
+
   const force = lastValue(state, "force") === "true";
   return { mode: "openai", params: validated.data, ...(force && { force }) };
 }
@@ -348,6 +360,13 @@ function parseGeminiArgs(state: ParseState): ParsedArgs {
     };
   }
 
+  if (validated.data.image_size === "512" && validated.data.model !== "gemini-3.1-flash-image") {
+    return { mode: "help", message: "Invalid --image-size for this model: 512 is only supported by gemini-3.1-flash-image" };
+  }
+  if (validated.data.model === "gemini-3.1-flash-lite-image" && validated.data.image_size && validated.data.image_size !== "1K") {
+    return { mode: "help", message: "Invalid --image-size for gemini-3.1-flash-lite-image: only 1K is supported" };
+  }
+
   const force = lastValue(state, "force") === "true";
   return { mode: "gemini", params: validated.data, ...(force && { force }) };
 }
@@ -366,6 +385,7 @@ function parseGrokArgs(state: ParseState): ParsedArgs {
   const model = lastValue(state, "model");
   const aspectRatio = lastValue(state, "aspect-ratio");
   const resolution = lastValue(state, "resolution");
+  const quality = lastValue(state, "quality");
 
   if (model !== undefined && !isAllowedEnumValue(model, grokModelSchema.options)) {
     return { mode: "help", message: formatEnumError("model", model, grokModelSchema.options) };
@@ -376,6 +396,9 @@ function parseGrokArgs(state: ParseState): ParsedArgs {
   if (resolution !== undefined && !isAllowedEnumValue(resolution, grokResolutionSchema.options)) {
     return { mode: "help", message: formatEnumError("resolution", resolution, grokResolutionSchema.options) };
   }
+  if (quality !== undefined && !isAllowedEnumValue(quality, grokQualitySchema.options)) {
+    return { mode: "help", message: formatEnumError("quality", quality, grokQualitySchema.options) };
+  }
 
   const validated = grokParamsSchema.safeParse({
     prompt,
@@ -384,6 +407,7 @@ function parseGrokArgs(state: ParseState): ParsedArgs {
     input_images,
     aspect_ratio: aspectRatio,
     resolution,
+    quality,
   });
 
   if (!validated.success) {
@@ -391,6 +415,10 @@ function parseGrokArgs(state: ParseState): ParsedArgs {
       mode: "help",
       message: formatSchemaError("Invalid Grok parameters", validated.error.issues[0] ?? { message: "Unknown error" }),
     };
+  }
+
+  if (validated.data.quality && validated.data.model !== "grok-imagine-image-2.0") {
+    return { mode: "help", message: "Invalid --quality for this model: quality is only supported by grok-imagine-image-2.0" };
   }
 
   const force = lastValue(state, "force") === "true";

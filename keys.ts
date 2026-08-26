@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -39,10 +39,14 @@ function readConfigFile(): ConfigFile {
 }
 
 async function writeConfigFile(config: ConfigFile): Promise<void> {
-  mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-  const tmpPath = CONFIG_PATH + ".tmp";
+  const configDirectory = dirname(CONFIG_PATH);
+  mkdirSync(configDirectory, { recursive: true, mode: 0o700 });
+  chmodSync(configDirectory, 0o700);
+  const tmpPath = `${CONFIG_PATH}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await Bun.write(tmpPath, JSON.stringify(config, null, 2));
+  chmodSync(tmpPath, 0o600);
   renameSync(tmpPath, CONFIG_PATH);
+  chmodSync(CONFIG_PATH, 0o600);
 }
 
 function maskKey(key: string): string {

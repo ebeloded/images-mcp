@@ -6,6 +6,7 @@ import {
   geminiModelSchema,
   grokAspectRatioSchema,
   grokModelSchema,
+  grokQualitySchema,
   grokResolutionSchema,
   openAIBackgroundSchema,
   openAIModelSchema,
@@ -70,7 +71,7 @@ export const providerSpecs: Record<Provider, ProviderSpec> = {
       {
         name: "model",
         description: "Model",
-        defaultValue: "grok-imagine-image-quality",
+        defaultValue: "grok-imagine-image-2.0",
         allowedValues: grokModelSchema.options,
       },
       {
@@ -82,6 +83,11 @@ export const providerSpecs: Record<Provider, ProviderSpec> = {
         name: "resolution",
         description: "Image resolution",
         allowedValues: grokResolutionSchema.options,
+      },
+      {
+        name: "quality",
+        description: "Image quality (grok-imagine-image-2.0 only)",
+        allowedValues: grokQualitySchema.options,
       },
     ],
   },
@@ -124,7 +130,7 @@ export const providerSpecs: Record<Provider, ProviderSpec> = {
       {
         name: "model",
         description: "Model",
-        defaultValue: "gemini-3-pro-image-preview",
+        defaultValue: "gemini-3.1-flash-image",
         allowedValues: geminiModelSchema.options,
       },
       {

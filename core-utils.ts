@@ -56,6 +56,7 @@ export type GrokResult = {
   model: GrokParams["model"];
   aspect_ratio?: GrokParams["aspect_ratio"];
   resolution?: GrokParams["resolution"];
+  quality?: GrokParams["quality"];
   input_images_count: number;
 };
 

@@ -57,7 +57,7 @@ img gemini --prompt "A ceramic teapot on a white background" --output ./teapot.p
 ```
 
 - Outputs: `.png`
-- Defaults: `--model gemini-3-pro-image-preview`
+- Defaults: `--model gemini-3.1-flash-image`
 - Useful flags: `--aspect-ratio`, `--image-size`
 - Use when the user asks for Gemini or wants Gemini-specific aspect ratio and image size controls.
 
@@ -68,8 +68,8 @@ img grok --prompt "A dramatic editorial portrait with neon rim light" --output .
 ```
 
 - Outputs: `.jpg`, `.jpeg`
-- Defaults: `--model grok-imagine-image-quality`
-- Useful flags: `--aspect-ratio`, `--resolution`
+- Defaults: `--model grok-imagine-image-2.0`
+- Useful flags: `--aspect-ratio`, `--resolution`, `--quality`
 - Use when the user asks for Grok/xAI generation.
 
 ## Editing Images
