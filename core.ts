@@ -20,7 +20,11 @@ export {
 
 export { generateGeminiImage, generateGrokImage, generateOpenAIImage };
 
-export function setClientsForTests(clients: { openai?: OpenAIClient | null; google?: GoogleClient | null; grok?: GrokClient | null }) {
+export function setClientsForTests(clients: {
+  openai?: OpenAIClient | null;
+  google?: GoogleClient | null;
+  grok?: GrokClient | null;
+}) {
   if ("openai" in clients) {
     setOpenAIClientForTests(clients.openai ?? null);
   }

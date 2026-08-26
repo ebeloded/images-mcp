@@ -1,22 +1,20 @@
 #!/usr/bin/env bun
 import tty from "node:tty";
-import { extname } from "node:path";
+import { Argument, Command, CommanderError, Option } from "commander";
+import { password } from "@inquirer/prompts";
 import packageMetadata from "./package.json" with { type: "json" };
-import { getGeminiApiKey, getGrokApiKey, getOpenAIApiKey } from "./config.ts";
+import { generateGeminiImage, generateGrokImage, generateOpenAIImage } from "./core.ts";
 import {
-  generateGeminiImage,
-  generateGrokImage,
-  generateOpenAIImage,
-} from "./core.ts";
-import { setKey, getKey, deleteKey, listKeys, configFilePath, type KeyProvider } from "./keys.ts";
-import {
-  buildCliUsageText,
-  commonFlags,
-  knownFlagsFor,
-  providerSpecs,
-  shortAliasToFlag,
-  type Provider,
-} from "./metadata.ts";
+  configFilePath,
+  deleteKey,
+  getKey,
+  KEY_PROVIDERS,
+  keyStatuses,
+  migrateKeys,
+  setKey,
+  type KeyProvider,
+} from "./keys.ts";
+import { providerSpecs, type Provider } from "./metadata.ts";
 import {
   geminiAspectRatioSchema,
   geminiImageSizeSchema,
@@ -37,570 +35,405 @@ import {
   type OpenAIParams,
 } from "./schemas.ts";
 
-export type ParsedArgs =
-  | { mode: "openai"; params: OpenAIParams; force?: boolean }
-  | { mode: "gemini"; params: GeminiParams; force?: boolean }
-  | { mode: "grok"; params: GrokParams; force?: boolean }
-  | { mode: "keys"; action: "list" | "set" | "get" | "delete"; provider?: KeyProvider; value?: string }
-  | { mode: "version" }
-  | { mode: "help"; message?: string };
-
-type ParseState = {
-  values: Map<string, string[]>;
-  positionals: string[];
+type GenerationOptions = {
+  prompt?: string;
+  output: string;
+  input?: string[];
+  force?: boolean;
+  model: string;
+  size?: string;
+  quality?: string;
+  background?: string;
+  aspectRatio?: string;
+  imageSize?: string;
+  resolution?: string;
 };
 
-const SHORT_ALIASES = shortAliasToFlag();
-const BOOLEAN_FLAGS = new Set(commonFlags.filter((f) => f.boolean).map((f) => f.name));
-
-function printUsage(message?: string) {
-  if (message) {
-    console.error(message);
+function collectInputs(value: string, previous: string[] = []): string[] {
+  for (const input of value.split(",")) {
+    const trimmed = input.trim();
+    if (trimmed) previous.push(trimmed);
   }
-  const write = message ? console.error : console.log;
-  const keyStatus = {
-    openai: !!getOpenAIApiKey(),
-    gemini: !!getGeminiApiKey(),
-    grok: !!getGrokApiKey(),
-  };
-  write(buildCliUsageText(keyStatus));
+  return previous;
 }
 
-const formatEnumError = (flag: string, value: string, allowed: readonly string[]) =>
-  `Invalid value for --${flag}: "${value}". Allowed values: ${allowed.join(", ")}`;
-const isAllowedEnumValue = <T extends string>(value: string, allowed: readonly T[]): value is T => allowed.includes(value as T);
-
-function levenshteinDistance(a: string, b: string): number {
-  const dp: number[][] = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
-
-  for (let i = 0; i <= a.length; i += 1) dp[i]![0] = i;
-  for (let j = 0; j <= b.length; j += 1) dp[0]![j] = j;
-
+function editDistance(a: string, b: string): number {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
   for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = previous[0]!;
+    previous[0] = i;
     for (let j = 1; j <= b.length; j += 1) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i]![j] = Math.min(
-        dp[i - 1]![j]! + 1,
-        dp[i]![j - 1]! + 1,
-        dp[i - 1]![j - 1]! + cost
+      const old = previous[j]!;
+      previous[j] = Math.min(
+        previous[j]! + 1,
+        previous[j - 1]! + 1,
+        diagonal + (a[i - 1] === b[j - 1] ? 0 : 1),
       );
+      diagonal = old;
     }
   }
-
-  return dp[a.length]![b.length]!;
+  return previous[b.length]!;
 }
 
-function suggestFlag(flag: string, knownFlags: readonly string[]): string | undefined {
-  let best: { flag: string; distance: number } | undefined;
-
-  for (const knownFlag of knownFlags) {
-    const distance = levenshteinDistance(flag, knownFlag);
-    if (!best || distance < best.distance) {
-      best = { flag: knownFlag, distance };
-    }
+function suggestCommand(value: string): string | undefined {
+  let best: { command: string; distance: number } | undefined;
+  for (const command of ["openai", "gemini", "grok", "keys"]) {
+    const distance = command.startsWith(value) ? 0 : editDistance(value, command);
+    if (distance <= 3 && (!best || distance < best.distance)) best = { command, distance };
   }
-
-  if (!best || best.distance > 3) return undefined;
-  return best.flag;
+  return best?.command;
 }
 
-function formatUnknownFlagsError(command: Provider, unknownFlags: string[], knownFlags: readonly string[]) {
-  const parts = unknownFlags.map((rawFlag) => {
-    const clean = rawFlag.replace(/^-+/, "");
-    const suggestion = suggestFlag(clean, knownFlags);
-    return suggestion ? `${rawFlag} (did you mean --${suggestion}?)` : rawFlag;
-  });
-
-  return `Unknown flag(s) for ${command}: ${parts.join(", ")}`;
-}
-
-function splitLongFlag(token: string): { flag: string; inlineValue?: string } {
-  const equalsIndex = token.indexOf("=");
-  if (equalsIndex === -1) {
-    return { flag: token.slice(2) };
+async function resolvePrompt(
+  flagPrompt: string | undefined,
+  positionalWords: string[],
+): Promise<string> {
+  const positionalPrompt = positionalWords.join(" ").trim();
+  if (flagPrompt !== undefined && positionalPrompt)
+    throw new Error("Pass the prompt with --prompt or as positional text, not both");
+  const explicit = (flagPrompt ?? positionalPrompt).trim();
+  if (explicit) return explicit;
+  if (!tty.isatty(0)) {
+    const piped = (await Bun.stdin.text()).trim();
+    if (piped) return piped;
   }
+  throw new Error("Missing prompt. Pass --prompt, add it after the options, or pipe it on stdin");
+}
 
-  return {
-    flag: token.slice(2, equalsIndex),
-    inlineValue: token.slice(equalsIndex + 1),
+function requireValid<T>(
+  result: { success: true; data: T } | { success: false; error: { issues: { message: string }[] } },
+): T {
+  if (result.success) return result.data;
+  throw new Error(result.error.issues[0]?.message ?? "Invalid options");
+}
+
+async function paramsFor(
+  provider: Provider,
+  promptWords: string[],
+  options: GenerationOptions,
+): Promise<OpenAIParams | GeminiParams | GrokParams> {
+  const prompt = await resolvePrompt(options.prompt, promptWords);
+  const shared = {
+    prompt,
+    output_path: options.output.trim(),
+    input_images: options.input?.length ? options.input : undefined,
+    model: options.model,
   };
-}
 
-function pushValue(state: ParseState, key: string, value: string) {
-  const existing = state.values.get(key);
-  if (existing) {
-    existing.push(value);
-    return;
-  }
-  state.values.set(key, [value]);
-}
-
-function parseInputValues(values: string[]): string[] {
-  return values
-    .flatMap((entry) => entry.split(","))
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-}
-
-function isLikelyAnotherFlag(token: string, knownFlags: Set<string>): boolean {
-  if (token === "--help" || token === "-h") return true;
-  if (token.startsWith("--")) {
-    const { flag } = splitLongFlag(token);
-    return knownFlags.has(flag);
-  }
-  return token.length === 2 && token.startsWith("-") && token in SHORT_ALIASES;
-}
-
-function parseCommandArgs(command: Provider, args: string[]): ParsedArgs | { state: ParseState } {
-  const knownFlagNames = knownFlagsFor(command);
-  const knownFlags = new Set(knownFlagNames);
-  const state: ParseState = { values: new Map(), positionals: [] };
-  const unknownFlags: string[] = [];
-
-  for (let i = 0; i < args.length; i += 1) {
-    const token = args[i];
-    if (!token) continue;
-
-    if (token === "--help" || token === "-h") {
-      return { mode: "help" };
-    }
-
-    if (token === "--") {
-      state.positionals.push(...args.slice(i + 1));
-      break;
-    }
-
-    if (token.startsWith("--")) {
-      const { flag, inlineValue } = splitLongFlag(token);
-      if (!flag) {
-        return { mode: "help", message: `Unexpected argument: ${token}` };
+  if (provider === "openai") {
+    const params = requireValid(
+      openAIParamsSchema.safeParse({
+        ...shared,
+        size: options.size,
+        quality: options.quality,
+        background: options.background,
+      }),
+    );
+    if (params.background === "transparent") {
+      if (params.model === "gpt-image-2" || params.model === "gpt-image-2-2026-04-21") {
+        throw new Error(`${params.model} does not support transparent backgrounds`);
       }
-
-      if (!knownFlags.has(flag)) {
-        unknownFlags.push(`--${flag}`);
-        continue;
-      }
-
-      if (BOOLEAN_FLAGS.has(flag)) {
-        pushValue(state, flag, "true");
-        continue;
-      }
-
-      let value = inlineValue;
-      if (value === undefined) {
-        value = args[i + 1];
-        if (value === undefined || isLikelyAnotherFlag(value, knownFlags)) {
-          return { mode: "help", message: `Missing value for --${flag}` };
-        }
-        i += 1;
-      }
-
-      pushValue(state, flag, value);
-      continue;
+      if (!/\.(png|webp)$/i.test(params.output_path))
+        throw new Error("Transparent backgrounds require a .png or .webp output");
     }
+    return params;
+  }
 
-    if (token.startsWith("-") && token.length === 2) {
-      const alias = SHORT_ALIASES[token];
-      if (!alias) {
-        unknownFlags.push(token);
-        continue;
+  if (provider === "gemini") {
+    const params = requireValid(
+      geminiParamsSchema.safeParse({
+        ...shared,
+        aspect_ratio: options.aspectRatio,
+        image_size: options.imageSize,
+      }),
+    );
+    if (params.image_size === "512" && params.model !== "gemini-3.1-flash-image") {
+      throw new Error("Image size 512 is only supported by gemini-3.1-flash-image");
+    }
+    if (
+      params.model === "gemini-3.1-flash-lite-image" &&
+      params.image_size &&
+      params.image_size !== "1K"
+    ) {
+      throw new Error("gemini-3.1-flash-lite-image supports only image size 1K");
+    }
+    return params;
+  }
+
+  const params = requireValid(
+    grokParamsSchema.safeParse({
+      ...shared,
+      aspect_ratio: options.aspectRatio,
+      resolution: options.resolution,
+      quality: options.quality,
+    }),
+  );
+  if (params.quality && params.model !== "grok-imagine-image-2.0") {
+    throw new Error("--quality is only supported by grok-imagine-image-2.0");
+  }
+  return params;
+}
+
+async function generate(
+  provider: Provider,
+  promptWords: string[],
+  options: GenerationOptions,
+): Promise<void> {
+  const params = await paramsFor(provider, promptWords, options);
+  if (!options.force && (await Bun.file(params.output_path).exists())) {
+    throw new Error(
+      `Output file already exists: ${params.output_path}\nUse -f or --force to overwrite.`,
+    );
+  }
+
+  const result =
+    provider === "openai"
+      ? await generateOpenAIImage(params as OpenAIParams)
+      : provider === "gemini"
+        ? await generateGeminiImage(params as GeminiParams)
+        : await generateGrokImage(params as GrokParams);
+  if (!result.ok) throw new Error(result.error);
+  console.log(JSON.stringify(result.data, null, 2));
+}
+
+function addSharedGenerationOptions(command: Command): Command {
+  return command
+    .argument("[prompt...]", "prompt or editing instructions")
+    .option("-p, --prompt <text>", "prompt (alternatively use positional text or stdin)")
+    .requiredOption("-o, --output <path>", "output file path")
+    .option("-i, --input <path>", "input image; repeat or use comma-separated paths", collectInputs)
+    .option("-f, --force", "overwrite an existing output file");
+}
+
+function addProviderCommands(program: Command): void {
+  const openai = addSharedGenerationOptions(
+    program.command("openai").description(providerSpecs.openai.summary),
+  )
+    .addOption(
+      new Option("--model <name>", "OpenAI image model")
+        .choices(openAIModelSchema.options)
+        .default("gpt-image-2"),
+    )
+    .addOption(
+      new Option("--size <size>", "image dimensions")
+        .choices(openAISizeSchema.options)
+        .default("auto"),
+    )
+    .addOption(
+      new Option("--quality <quality>", "rendering quality")
+        .choices(openAIQualitySchema.options)
+        .default("auto"),
+    )
+    .addOption(
+      new Option("--background <type>", "background handling")
+        .choices(openAIBackgroundSchema.options)
+        .default("auto"),
+    )
+    .addHelpText(
+      "after",
+      "\nExamples:\n  img openai -o cat.png 'A neon cat in rainy Tokyo'\n  img openai -i source.png -o edit.webp 'Add dramatic lighting'",
+    )
+    .action((promptWords: string[], options: GenerationOptions) =>
+      generate("openai", promptWords, options),
+    );
+
+  const gemini = addSharedGenerationOptions(
+    program.command("gemini").description(providerSpecs.gemini.summary),
+  )
+    .addOption(
+      new Option("--model <name>", "Gemini image model")
+        .choices(geminiModelSchema.options)
+        .default("gemini-3.1-flash-image"),
+    )
+    .addOption(
+      new Option("--aspect-ratio <ratio>", "output aspect ratio").choices(
+        geminiAspectRatioSchema.options,
+      ),
+    )
+    .addOption(
+      new Option("--image-size <size>", "output image size").choices(geminiImageSizeSchema.options),
+    )
+    .addHelpText(
+      "after",
+      "\nExample:\n  img gemini -o concept.png --aspect-ratio 16:9 --image-size 2K < prompt.txt",
+    )
+    .action((promptWords: string[], options: GenerationOptions) =>
+      generate("gemini", promptWords, options),
+    );
+
+  const grok = addSharedGenerationOptions(
+    program.command("grok").description(providerSpecs.grok.summary),
+  )
+    .addOption(
+      new Option("--model <name>", "xAI image model")
+        .choices(grokModelSchema.options)
+        .default("grok-imagine-image-2.0"),
+    )
+    .addOption(
+      new Option("--aspect-ratio <ratio>", "output aspect ratio").choices(
+        grokAspectRatioSchema.options,
+      ),
+    )
+    .addOption(
+      new Option("--resolution <size>", "output resolution").choices(grokResolutionSchema.options),
+    )
+    .addOption(
+      new Option("--quality <quality>", "rendering quality (Imagine 2.0 only)").choices(
+        grokQualitySchema.options,
+      ),
+    )
+    .addHelpText(
+      "after",
+      "\nExample:\n  img grok -o portrait.jpg --aspect-ratio 3:2 'Editorial portrait with rim light'",
+    )
+    .action((promptWords: string[], options: GenerationOptions) =>
+      generate("grok", promptWords, options),
+    );
+
+  for (const command of [openai, gemini, grok]) command.showHelpAfterError();
+}
+
+function providerArgument(): Argument {
+  return new Argument("<provider>", "API provider").choices([...KEY_PROVIDERS]);
+}
+
+function storageLabel(storage: string): string {
+  return storage === "keychain"
+    ? "macOS Keychain"
+    : storage === "secret-service"
+      ? "system keyring"
+      : configFilePath();
+}
+
+function printKeyStatuses(): void {
+  console.log("Provider  Stored                       Environment");
+  for (const status of keyStatuses()) {
+    const stored = status.stored ? `${status.stored.masked} (${status.stored.storage})` : "—";
+    console.log(
+      `${status.provider.padEnd(9)} ${stored.padEnd(28)} ${status.environment.join(", ") || "—"}`,
+    );
+  }
+}
+
+function addKeysCommand(program: Command): void {
+  const keys = program.command("keys").description("Manage provider API keys");
+  keys.action(printKeyStatuses);
+
+  keys
+    .command("list")
+    .description("Show stored-key and environment status")
+    .action(printKeyStatuses);
+
+  keys
+    .command("set")
+    .description("Store a provider key in the system keyring")
+    .addArgument(providerArgument())
+    .argument("[key]", "key value (omit to prompt or read stdin)")
+    .option("--plaintext", `store in ${configFilePath()} instead of the system keyring`)
+    .action(
+      async (
+        provider: KeyProvider,
+        argumentValue: string | undefined,
+        options: { plaintext?: boolean },
+      ) => {
+        let value = argumentValue;
+        if (value)
+          console.error(
+            "Warning: passing secrets as arguments may expose them in process listings and shell history.",
+          );
+        if (!value)
+          value = tty.isatty(0)
+            ? await password({ message: `${provider} API key:` })
+            : (await Bun.stdin.text()).trim();
+        if (!value) throw new Error("No key provided");
+        const storage = await setKey(provider, value, { plaintext: options.plaintext });
+        console.log(`${provider} key saved to ${storageLabel(storage)}.`);
+      },
+    );
+
+  keys
+    .command("get")
+    .description("Print a stored key (does not read environment variables)")
+    .addArgument(providerArgument())
+    .action((provider: KeyProvider) => {
+      const stored = getKey(provider);
+      if (!stored) throw new Error(`No stored ${provider} key found`);
+      console.log(stored.value);
+    });
+
+  keys
+    .command("delete")
+    .description("Remove a stored key from the keyring and legacy config")
+    .addArgument(providerArgument())
+    .action(async (provider: KeyProvider) => {
+      if (!(await deleteKey(provider))) throw new Error(`No stored ${provider} key found`);
+      console.log(`${provider} key removed.`);
+    });
+
+  keys
+    .command("migrate")
+    .description("Move plaintext config keys into the system keyring")
+    .action(async () => {
+      const result = await migrateKeys();
+      if (result.migrated.length === 0)
+        console.log(`Nothing to migrate: no plaintext keys in ${result.path}.`);
+      else
+        console.log(
+          `Moved ${result.migrated.join(", ")} to ${result.keyringLabel}. ${result.path} no longer contains those secrets.`,
+        );
+    });
+
+  keys.addHelpText(
+    "after",
+    `\nKeys use the system keyring by default. Use --plaintext only when required.\nRun 'img keys migrate' to move legacy secrets out of ${configFilePath()}.`,
+  );
+}
+
+export function createProgram(): Command {
+  const program = new Command();
+  program
+    .name("img")
+    .description("Generate and edit images with OpenAI, Google Gemini, and xAI Grok")
+    .version(packageMetadata.version, "-v, --version", "output the version number")
+    .enablePositionalOptions()
+    .allowExcessArguments()
+    .exitOverride()
+    .showSuggestionAfterError()
+    .showHelpAfterError()
+    .addHelpCommand()
+    .action((_options: unknown, command: Command) => {
+      const unknown = command.args[0];
+      if (unknown) {
+        const suggestion = suggestCommand(unknown);
+        command.error(
+          `Unknown command '${unknown}'.${suggestion ? ` Did you mean '${suggestion}'?` : ""}`,
+        );
       }
+      program.help();
+    });
 
-      if (alias === "help") {
-        return { mode: "help" };
-      }
+  program
+    .command("version", { hidden: true })
+    .description("Output the version number")
+    .action(() => console.log(packageMetadata.version));
 
-      if (!knownFlags.has(alias)) {
-        unknownFlags.push(token);
-        continue;
-      }
-
-      if (BOOLEAN_FLAGS.has(alias)) {
-        pushValue(state, alias, "true");
-        continue;
-      }
-
-      const value = args[i + 1];
-      if (value === undefined || isLikelyAnotherFlag(value, knownFlags)) {
-        return { mode: "help", message: `Missing value for --${alias}` };
-      }
-      i += 1;
-      pushValue(state, alias, value);
-      continue;
-    }
-
-    state.positionals.push(token);
-  }
-
-  if (unknownFlags.length > 0) {
-    return {
-      mode: "help",
-      message: formatUnknownFlagsError(command, [...new Set(unknownFlags)], knownFlagNames),
-    };
-  }
-
-  return { state };
+  addProviderCommands(program);
+  addKeysCommand(program);
+  return program;
 }
 
-function lastValue(state: ParseState, key: string): string | undefined {
-  return state.values.get(key)?.at(-1);
-}
-
-function toPrompt(state: ParseState): string | undefined {
-  const promptFromFlag = lastValue(state, "prompt");
-  if (promptFromFlag !== undefined) {
-    const trimmed = promptFromFlag.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  const positionalPrompt = state.positionals.join(" ").trim();
-  return positionalPrompt.length > 0 ? positionalPrompt : undefined;
-}
-
-function formatSchemaError(messagePrefix: string, issue: { message: string }): string {
-  return `${messagePrefix}: ${issue.message || "Unknown error"}`;
-}
-
-function parseOpenAIArgs(state: ParseState): ParsedArgs {
-  const prompt = toPrompt(state);
-  const output_path = lastValue(state, "output")?.trim();
-  const rawInputImages = state.values.get("input") ?? [];
-  const parsedInputImages = parseInputValues(rawInputImages);
-  const input_images = parsedInputImages.length > 0 ? parsedInputImages : undefined;
-
-  if (!prompt || !output_path) {
-    return { mode: "help", message: "Missing required --prompt or --output" };
-  }
-
-  const model = lastValue(state, "model");
-  const size = lastValue(state, "size");
-  const quality = lastValue(state, "quality");
-  const background = lastValue(state, "background");
-
-  if (model !== undefined && !isAllowedEnumValue(model, openAIModelSchema.options)) {
-    return { mode: "help", message: formatEnumError("model", model, openAIModelSchema.options) };
-  }
-  if (size !== undefined && !isAllowedEnumValue(size, openAISizeSchema.options)) {
-    return { mode: "help", message: formatEnumError("size", size, openAISizeSchema.options) };
-  }
-  if (quality !== undefined && !isAllowedEnumValue(quality, openAIQualitySchema.options)) {
-    return { mode: "help", message: formatEnumError("quality", quality, openAIQualitySchema.options) };
-  }
-  if (background !== undefined && !isAllowedEnumValue(background, openAIBackgroundSchema.options)) {
-    return { mode: "help", message: formatEnumError("background", background, openAIBackgroundSchema.options) };
-  }
-
-  const validated = openAIParamsSchema.safeParse({
-    prompt,
-    output_path,
-    model,
-    input_images,
-    size,
-    quality,
-    background,
-  });
-
-  if (!validated.success) {
-    return {
-      mode: "help",
-      message: formatSchemaError("Invalid OpenAI parameters", validated.error.issues[0] ?? { message: "Unknown error" }),
-    };
-  }
-
-  if (validated.data.background === "transparent") {
-    if (validated.data.model === "gpt-image-2" || validated.data.model === "gpt-image-2-2026-04-21") {
-      return { mode: "help", message: `Invalid --background for ${validated.data.model}: transparent backgrounds are not supported` };
-    }
-    const outputExtension = extname(validated.data.output_path).toLowerCase();
-    if (outputExtension !== ".png" && outputExtension !== ".webp") {
-      return { mode: "help", message: "Invalid --background transparent: output must use .png or .webp" };
-    }
-  }
-
-  const force = lastValue(state, "force") === "true";
-  return { mode: "openai", params: validated.data, ...(force && { force }) };
-}
-
-function parseGeminiArgs(state: ParseState): ParsedArgs {
-  const prompt = toPrompt(state);
-  const output_path = lastValue(state, "output")?.trim();
-  const rawInputImages = state.values.get("input") ?? [];
-  const parsedInputImages = parseInputValues(rawInputImages);
-  const input_images = parsedInputImages.length > 0 ? parsedInputImages : undefined;
-
-  if (!prompt || !output_path) {
-    return { mode: "help", message: "Missing required --prompt or --output" };
-  }
-
-  const model = lastValue(state, "model");
-  const aspectRatio = lastValue(state, "aspect-ratio");
-  const imageSize = lastValue(state, "image-size");
-
-  if (model !== undefined && !isAllowedEnumValue(model, geminiModelSchema.options)) {
-    return { mode: "help", message: formatEnumError("model", model, geminiModelSchema.options) };
-  }
-  if (aspectRatio !== undefined && !isAllowedEnumValue(aspectRatio, geminiAspectRatioSchema.options)) {
-    return { mode: "help", message: formatEnumError("aspect-ratio", aspectRatio, geminiAspectRatioSchema.options) };
-  }
-  if (imageSize !== undefined && !isAllowedEnumValue(imageSize, geminiImageSizeSchema.options)) {
-    return { mode: "help", message: formatEnumError("image-size", imageSize, geminiImageSizeSchema.options) };
-  }
-
-  const validated = geminiParamsSchema.safeParse({
-    prompt,
-    output_path,
-    model,
-    input_images,
-    aspect_ratio: aspectRatio,
-    image_size: imageSize,
-  });
-
-  if (!validated.success) {
-    return {
-      mode: "help",
-      message: formatSchemaError("Invalid Gemini parameters", validated.error.issues[0] ?? { message: "Unknown error" }),
-    };
-  }
-
-  if (validated.data.image_size === "512" && validated.data.model !== "gemini-3.1-flash-image") {
-    return { mode: "help", message: "Invalid --image-size for this model: 512 is only supported by gemini-3.1-flash-image" };
-  }
-  if (validated.data.model === "gemini-3.1-flash-lite-image" && validated.data.image_size && validated.data.image_size !== "1K") {
-    return { mode: "help", message: "Invalid --image-size for gemini-3.1-flash-lite-image: only 1K is supported" };
-  }
-
-  const force = lastValue(state, "force") === "true";
-  return { mode: "gemini", params: validated.data, ...(force && { force }) };
-}
-
-function parseGrokArgs(state: ParseState): ParsedArgs {
-  const prompt = toPrompt(state);
-  const output_path = lastValue(state, "output")?.trim();
-  const rawInputImages = state.values.get("input") ?? [];
-  const parsedInputImages = parseInputValues(rawInputImages);
-  const input_images = parsedInputImages.length > 0 ? parsedInputImages : undefined;
-
-  if (!prompt || !output_path) {
-    return { mode: "help", message: "Missing required --prompt or --output" };
-  }
-
-  const model = lastValue(state, "model");
-  const aspectRatio = lastValue(state, "aspect-ratio");
-  const resolution = lastValue(state, "resolution");
-  const quality = lastValue(state, "quality");
-
-  if (model !== undefined && !isAllowedEnumValue(model, grokModelSchema.options)) {
-    return { mode: "help", message: formatEnumError("model", model, grokModelSchema.options) };
-  }
-  if (aspectRatio !== undefined && !isAllowedEnumValue(aspectRatio, grokAspectRatioSchema.options)) {
-    return { mode: "help", message: formatEnumError("aspect-ratio", aspectRatio, grokAspectRatioSchema.options) };
-  }
-  if (resolution !== undefined && !isAllowedEnumValue(resolution, grokResolutionSchema.options)) {
-    return { mode: "help", message: formatEnumError("resolution", resolution, grokResolutionSchema.options) };
-  }
-  if (quality !== undefined && !isAllowedEnumValue(quality, grokQualitySchema.options)) {
-    return { mode: "help", message: formatEnumError("quality", quality, grokQualitySchema.options) };
-  }
-
-  const validated = grokParamsSchema.safeParse({
-    prompt,
-    output_path,
-    model,
-    input_images,
-    aspect_ratio: aspectRatio,
-    resolution,
-    quality,
-  });
-
-  if (!validated.success) {
-    return {
-      mode: "help",
-      message: formatSchemaError("Invalid Grok parameters", validated.error.issues[0] ?? { message: "Unknown error" }),
-    };
-  }
-
-  if (validated.data.quality && validated.data.model !== "grok-imagine-image-2.0") {
-    return { mode: "help", message: "Invalid --quality for this model: quality is only supported by grok-imagine-image-2.0" };
-  }
-
-  const force = lastValue(state, "force") === "true";
-  return { mode: "grok", params: validated.data, ...(force && { force }) };
-}
-
-const VALID_KEY_PROVIDERS: KeyProvider[] = ["openai", "gemini", "grok"];
-
-function isKeyProvider(value: string): value is KeyProvider {
-  return VALID_KEY_PROVIDERS.includes(value as KeyProvider);
-}
-
-function parseKeysArgs(rest: string[]): ParsedArgs {
-  if (rest.length === 0 || rest[0] === "list") {
-    return { mode: "keys", action: "list" };
-  }
-
-  const subcommand = rest[0]!;
-  if (subcommand !== "set" && subcommand !== "get" && subcommand !== "delete") {
-    return { mode: "help", message: `Unknown keys subcommand: ${subcommand}. Use list, set, get, or delete` };
-  }
-
-  const provider = rest[1];
-  if (!provider) {
-    return { mode: "help", message: `Missing provider for 'keys ${subcommand}'. Allowed: openai, gemini, grok` };
-  }
-
-  if (!isKeyProvider(provider)) {
-    return { mode: "help", message: `Unknown provider: "${provider}". Allowed: openai, gemini, grok` };
-  }
-
-  if (subcommand === "set") {
-    const value = rest[2];
-    return { mode: "keys", action: "set", provider, value };
-  }
-
-  return { mode: "keys", action: subcommand, provider };
-}
-
-export function parseArgs(argv: string[]): ParsedArgs {
-  if (argv.length === 0) return { mode: "help" };
-
-  const command = argv[0];
-  const rest = argv.slice(1);
-
-  if (!command) return { mode: "help" };
-  if (command === "--help" || command === "-h") return { mode: "help" };
-  if (command === "--version" || command === "-v" || command === "version") {
-    return rest.length === 0
-      ? { mode: "version" }
-      : { mode: "help", message: `Unexpected argument after ${command}: ${rest[0]}` };
-  }
-  if (command !== "openai" && command !== "gemini" && command !== "grok" && command !== "keys") {
-    return { mode: "help", message: `Unknown command: ${command}` };
-  }
-
-  if (command === "keys") return parseKeysArgs(rest);
-
-  const parsed = parseCommandArgs(command, rest);
-  if ("mode" in parsed) {
-    return parsed;
-  }
-
-  return command === "openai"
-    ? parseOpenAIArgs(parsed.state)
-    : command === "gemini"
-    ? parseGeminiArgs(parsed.state)
-    : parseGrokArgs(parsed.state);
-}
-
-function hasPromptArg(argv: string[]): boolean {
-  const promptLong = commonFlags.find((flag) => flag.name === "prompt");
-  const promptShort = promptLong?.short;
-  return argv.some((token) => token === "--prompt" || token.startsWith("--prompt=") || token === promptShort);
-}
-
-async function runKeysCommand(parsed: Extract<ParsedArgs, { mode: "keys" }>): Promise<void> {
-  if (parsed.action === "list") {
-    listKeys();
-    return;
-  }
-
-  if (parsed.action === "set") {
-    let value = parsed.value;
-    if (value === undefined) {
-      value = (await Bun.stdin.text()).trim();
-      if (!value) {
-        console.error("Error: no key provided (pass as argument or pipe via stdin)");
-        process.exit(1);
-      }
-    }
-    await setKey(parsed.provider!, value);
-    console.log(`${parsed.provider!} key saved to ${configFilePath()}`);
-    return;
-  }
-
-  if (parsed.action === "get") {
-    const value = getKey(parsed.provider!);
-    if (value !== undefined) {
-      console.log(value);
-    } else {
-      console.error(`No ${parsed.provider!} key found in config`);
-      process.exit(1);
-    }
-    return;
-  }
-
-  if (parsed.action === "delete") {
-    const removed = await deleteKey(parsed.provider!);
-    if (removed) {
-      console.log(`${parsed.provider!} key removed from ${configFilePath()}`);
-    } else {
-      console.error(`No ${parsed.provider!} key found in config`);
-      process.exit(1);
-    }
-    return;
-  }
-}
-
-async function run() {
-  const argv = process.argv.slice(2);
-  let parsed = parseArgs(argv);
-
-  const isMissingPromptOrOutput = parsed.mode === "help" && parsed.message === "Missing required --prompt or --output";
-  const promptPassedInArgs = hasPromptArg(argv);
-  const stdinIsTTY = tty.isatty(0);
-
-  if (isMissingPromptOrOutput && !promptPassedInArgs && !stdinIsTTY) {
-    const promptFromStdin = (await Bun.stdin.text()).trim();
-    if (promptFromStdin) {
-      const command = argv[0];
-      if (command === "openai" || command === "gemini" || command === "grok") {
-        parsed = parseArgs([command, "--prompt", promptFromStdin, ...argv.slice(1)]);
-      }
-    }
-  }
-
-  if (parsed.mode === "keys") {
-    await runKeysCommand(parsed);
-    return;
-  }
-
-  if (parsed.mode === "version") {
-    console.log(packageMetadata.version);
-    return;
-  }
-
-  if (parsed.mode === "help") {
-    printUsage(parsed.message);
-    process.exit(parsed.message ? 1 : 0);
-  }
-
-  if (!parsed.force) {
-    const outputFile = Bun.file(parsed.params.output_path);
-    if (await outputFile.exists()) {
-      console.error(`Error: output file already exists: ${parsed.params.output_path}\nUse -f or --force to overwrite.`);
-      process.exit(1);
-    }
-  }
-
+export async function run(argv: string[] = process.argv): Promise<void> {
   try {
-    const result =
-      parsed.mode === "openai"
-        ? await generateOpenAIImage(parsed.params)
-        : parsed.mode === "gemini"
-        ? await generateGeminiImage(parsed.params)
-        : await generateGrokImage(parsed.params);
-
-    if (!result.ok) {
-      console.error(`Error: ${result.error}`);
-      process.exit(1);
-    }
-
-    console.log(JSON.stringify(result.data, null, 2));
+    await createProgram().parseAsync(argv);
   } catch (error) {
+    if (error instanceof CommanderError) {
+      if (error.code === "commander.helpDisplayed" || error.code === "commander.version") return;
+      process.exitCode = error.exitCode;
+      return;
+    }
     console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 
-if (import.meta.main) {
-  await run();
-}
+if (import.meta.main) await run();

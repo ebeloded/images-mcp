@@ -204,7 +204,13 @@ describe("core provider request mapping", () => {
           generateContent: async (params) => {
             request = params as unknown as Record<string, unknown>;
             return {
-              candidates: [{ content: { parts: [{ inlineData: { data: Buffer.from("nb2").toString("base64") } }] } }],
+              candidates: [
+                {
+                  content: {
+                    parts: [{ inlineData: { data: Buffer.from("nb2").toString("base64") } }],
+                  },
+                },
+              ],
             };
           },
         },
@@ -236,7 +242,13 @@ describe("core provider request mapping", () => {
           generateContent: async (params) => {
             request = params as unknown as Record<string, unknown>;
             return {
-              candidates: [{ content: { parts: [{ inlineData: { data: Buffer.from("nb2-lite").toString("base64") } }] } }],
+              candidates: [
+                {
+                  content: {
+                    parts: [{ inlineData: { data: Buffer.from("nb2-lite").toString("base64") } }],
+                  },
+                },
+              ],
             };
           },
         },

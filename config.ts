@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getKey } from "./keys.ts";
 
 type ConfigFile = {
   openai_api_key?: string;
@@ -16,31 +16,32 @@ function tryReadConfigFile(path: string): ConfigFile | null {
   }
 }
 
-function loadConfig(): ConfigFile {
-  return (
-    tryReadConfigFile(join(process.cwd(), ".image-gen.json")) ??
-    tryReadConfigFile(join(homedir(), ".config", "image-gen", "config.json")) ??
-    {}
-  );
+function loadProjectConfig(): ConfigFile {
+  return tryReadConfigFile(join(process.cwd(), ".image-gen.json")) ?? {};
 }
 
-let cachedConfig: ConfigFile | null = null;
+let cachedProjectConfig: ConfigFile | null = null;
 
-function getConfig(): ConfigFile {
-  if (!cachedConfig) {
-    cachedConfig = loadConfig();
+function getProjectConfig(): ConfigFile {
+  if (!cachedProjectConfig) {
+    cachedProjectConfig = loadProjectConfig();
   }
-  return cachedConfig;
+  return cachedProjectConfig;
 }
 
 export function getOpenAIApiKey(): string | undefined {
-  return getConfig().openai_api_key ?? process.env.OPENAI_API_KEY;
+  return process.env.OPENAI_API_KEY ?? getProjectConfig().openai_api_key ?? getKey("openai")?.value;
 }
 
 export function getGeminiApiKey(): string | undefined {
-  return getConfig().gemini_api_key ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
+  return (
+    process.env.GEMINI_API_KEY ??
+    process.env.GOOGLE_API_KEY ??
+    getProjectConfig().gemini_api_key ??
+    getKey("gemini")?.value
+  );
 }
 
 export function getGrokApiKey(): string | undefined {
-  return getConfig().xai_api_key ?? process.env.XAI_API_KEY;
+  return process.env.XAI_API_KEY ?? getProjectConfig().xai_api_key ?? getKey("grok")?.value;
 }

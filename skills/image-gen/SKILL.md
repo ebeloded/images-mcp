@@ -14,6 +14,8 @@ img --help
 img --version
 ```
 
+Help is command-specific: use `img <provider> --help` or `img keys --help` for focused options and examples.
+
 Install the package globally when the CLI is missing:
 
 ```bash
@@ -99,15 +101,21 @@ Check key status:
 img keys
 ```
 
-Set persistent keys:
+Set persistent keys in macOS Keychain (or the Linux system keyring):
 
 ```bash
-img keys set openai sk-proj-...
-img keys set gemini AIza...
-img keys set grok xai-...
+img keys set openai
+img keys set gemini
+img keys set grok
 ```
 
-Pipe secrets when possible to avoid shell history:
+Migrate keys from the legacy plaintext config after upgrading:
+
+```bash
+img keys migrate
+```
+
+Pipe secrets in non-interactive use to avoid shell history:
 
 ```bash
 echo "sk-proj-..." | img keys set openai
@@ -119,7 +127,7 @@ Environment variables also work:
 - Gemini: `GEMINI_API_KEY` or `GOOGLE_API_KEY`
 - Grok: `XAI_API_KEY`
 
-Persistent user config lives at `~/.config/image-gen/config.json`; a local `.image-gen.json` in the current working directory takes precedence.
+The system keyring is the default persistent store. On unsupported systems, the CLI falls back to `${XDG_CONFIG_HOME:-~/.config}/image-gen/config.json` with private permissions. A local legacy `.image-gen.json` in the current working directory still takes precedence over stored credentials.
 
 ## Prompt Input
 
