@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import tty from "node:tty";
 import { extname } from "node:path";
+import packageMetadata from "./package.json" with { type: "json" };
 import { getGeminiApiKey, getGrokApiKey, getOpenAIApiKey } from "./config.ts";
 import {
   generateGeminiImage,
@@ -41,6 +42,7 @@ export type ParsedArgs =
   | { mode: "gemini"; params: GeminiParams; force?: boolean }
   | { mode: "grok"; params: GrokParams; force?: boolean }
   | { mode: "keys"; action: "list" | "set" | "get" | "delete"; provider?: KeyProvider; value?: string }
+  | { mode: "version" }
   | { mode: "help"; message?: string };
 
 type ParseState = {
@@ -466,6 +468,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   if (!command) return { mode: "help" };
   if (command === "--help" || command === "-h") return { mode: "help" };
+  if (command === "--version" || command === "-v" || command === "version") {
+    return rest.length === 0
+      ? { mode: "version" }
+      : { mode: "help", message: `Unexpected argument after ${command}: ${rest[0]}` };
+  }
   if (command !== "openai" && command !== "gemini" && command !== "grok" && command !== "keys") {
     return { mode: "help", message: `Unknown command: ${command}` };
   }
@@ -553,6 +560,11 @@ async function run() {
 
   if (parsed.mode === "keys") {
     await runKeysCommand(parsed);
+    return;
+  }
+
+  if (parsed.mode === "version") {
+    console.log(packageMetadata.version);
     return;
   }
 
