@@ -1,12 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import { parseArgs } from "./cli.ts";
 import path from "node:path";
+import packageMetadata from "./package.json" with { type: "json" };
 
 describe("parseArgs validation", () => {
   it("returns help for top-level and command help flags", () => {
     expect(parseArgs(["--help"]).mode).toBe("help");
     expect(parseArgs(["openai", "--help"]).mode).toBe("help");
     expect(parseArgs(["gemini", "-h"]).mode).toBe("help");
+  });
+
+  it("recognizes version flags and command", () => {
+    expect(parseArgs(["--version"])).toEqual({ mode: "version" });
+    expect(parseArgs(["-v"])).toEqual({ mode: "version" });
+    expect(parseArgs(["version"])).toEqual({ mode: "version" });
   });
 
   it("rejects unknown commands", () => {
@@ -201,6 +208,15 @@ describe("cli executable behavior", () => {
     expect(result.stdout).toContain("image-gen openai  [args]");
     expect(result.stdout).toContain("--prompt, -p");
     expect(result.stderr).toBe("");
+  });
+
+  it("prints the package version and exits 0", () => {
+    for (const flag of ["--version", "-v", "version"]) {
+      const result = runCli([flag]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(`${packageMetadata.version}\n`);
+      expect(result.stderr).toBe("");
+    }
   });
 
   it("prints validation errors with usage and exits 1", () => {

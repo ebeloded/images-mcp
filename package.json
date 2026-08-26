@@ -1,6 +1,6 @@
 {
   "name": "@ebeloded/image-gen",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "packageManager": "bun@1.4.0",
   "description": "CLI for AI image generation using OpenAI, Google Gemini, and xAI Grok",
   "type": "module",

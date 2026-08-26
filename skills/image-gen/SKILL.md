@@ -11,6 +11,7 @@ Use the installed CLI when available:
 
 ```bash
 img --help
+img --version
 ```
 
 Install the package globally when the CLI is missing:

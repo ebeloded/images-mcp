@@ -12,6 +12,7 @@ Generate and edit AI images from the command line using OpenAI, Gemini, or Grok.
 
 ```bash
 image-gen <provider> --prompt "..." --output /path/to/image.png
+image-gen --version
 ```
 
 ## Providers

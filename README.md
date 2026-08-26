@@ -66,6 +66,7 @@ After a package install or link, the `img` and `image-gen` binaries are on your 
 
 ```bash
 img --help
+img --version # or: img -v
 ```
 
 The longer `image-gen` binary is also available as a compatibility alias.
@@ -93,6 +94,7 @@ Common flags (all generation commands):
 | `--input <path>`, `-i <path>` | no | - | Repeatable input image path (`--input=a.png,b.png` also supported) |
 | `--force`, `-f` | no | - | Overwrite output file if it already exists |
 | `--help`, `-h` | no | - | Print usage |
+| `--version`, `-v` | no | - | Print the installed package version |
 
 Permissive CLI input forms:
 
@@ -205,7 +207,7 @@ Provider-specific success fields:
 
 ## Errors and Exit Codes
 
-- Exit `0`: Help (`--help`) or successful generation.
+- Exit `0`: Help (`--help`), version output (`--version`), or successful generation.
 - Exit `1`: Argument parsing/validation errors, runtime errors, API/auth errors, file errors.
 - Parse/validation errors are written to `stderr` as `<message>` followed by usage.
 - Runtime errors are written to `stderr` as `Error: <message>`.
