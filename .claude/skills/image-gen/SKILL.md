@@ -17,20 +17,20 @@ image-gen --version
 
 ## Providers
 
-| Provider | Command  | Output formats         | API key env var                       |
-|----------|----------|------------------------|---------------------------------------|
-| OpenAI   | `openai` | .png, .jpg, .jpeg, .webp | `OPENAI_API_KEY`                    |
-| Gemini   | `gemini` | .png                   | `GEMINI_API_KEY` or `GOOGLE_API_KEY`  |
-| Grok     | `grok`   | .jpg, .jpeg            | `XAI_API_KEY`                         |
+| Provider | Command  | Output formats           | API key env var                      |
+| -------- | -------- | ------------------------ | ------------------------------------ |
+| OpenAI   | `openai` | .png, .jpg, .jpeg, .webp | `OPENAI_API_KEY`                     |
+| Gemini   | `gemini` | .png                     | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| Grok     | `grok`   | .jpg, .jpeg              | `XAI_API_KEY`                        |
 
 ## Common flags (all providers)
 
-| Flag             | Short | Required | Description                                      |
-|------------------|-------|----------|--------------------------------------------------|
-| `--prompt`       | `-p`  | Yes      | Image description or editing instructions         |
-| `--output`       | `-o`  | Yes      | Output file path (extension must match provider)  |
-| `--input`        | `-i`  | No       | Input image(s) for editing; repeatable, comma-separated |
-| `--force`        | `-f`  | No       | Overwrite output file if it already exists               |
+| Flag       | Short | Required | Description                                             |
+| ---------- | ----- | -------- | ------------------------------------------------------- |
+| `--prompt` | `-p`  | Yes      | Image description or editing instructions               |
+| `--output` | `-o`  | Yes      | Output file path (extension must match provider)        |
+| `--input`  | `-i`  | No       | Input image(s) for editing; repeatable, comma-separated |
+| `--force`  | `-f`  | No       | Overwrite output file if it already exists              |
 
 The prompt can also be passed as positional args or piped via stdin.
 
@@ -38,58 +38,64 @@ The prompt can also be passed as positional args or piped via stdin.
 
 ### OpenAI
 
-| Flag             | Default         | Values                                |
-|------------------|-----------------|---------------------------------------|
-| `--model`        | gpt-image-2     | gpt-image-2, gpt-image-2-2026-04-21, gpt-image-1.5 |
-| `--size`         | auto            | auto, 1024x1024, 1536x1024, 1024x1536, 2048x2048, 2048x1152, 3840x2160, 2160x3840 |
-| `--quality`      | auto            | auto, high, medium, low               |
-| `--background`   | auto            | auto, transparent, opaque (transparent requires GPT Image 1.5 and PNG/WebP) |
+| Flag           | Default     | Values                                                                            |
+| -------------- | ----------- | --------------------------------------------------------------------------------- |
+| `--model`      | gpt-image-2 | gpt-image-2, gpt-image-2-2026-04-21, gpt-image-1.5                                |
+| `--size`       | auto        | auto, 1024x1024, 1536x1024, 1024x1536, 2048x2048, 2048x1152, 3840x2160, 2160x3840 |
+| `--quality`    | auto        | auto, high, medium, low                                                           |
+| `--background` | auto        | auto, transparent, opaque (transparent requires GPT Image 1.5 and PNG/WebP)       |
 
 ### Gemini
 
-| Flag             | Default                          | Values                                                       |
-|------------------|----------------------------------|--------------------------------------------------------------|
-| `--model`        | gemini-3.1-flash-image           | gemini-2.5-flash-image, gemini-3-pro-image, gemini-3.1-flash-image, gemini-3.1-flash-lite-image |
-| `--aspect-ratio` | (none)                           | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9       |
-| `--image-size`   | (none)                           | 512, 1K, 2K, 4K                                             |
+| Flag             | Default                | Values                                                                                          |
+| ---------------- | ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `--model`        | gemini-3.1-flash-image | gemini-2.5-flash-image, gemini-3-pro-image, gemini-3.1-flash-image, gemini-3.1-flash-lite-image |
+| `--aspect-ratio` | (none)                 | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9                                             |
+| `--image-size`   | (none)                 | 512, 1K, 2K, 4K                                                                                 |
 
 ### Grok
 
-| Flag             | Default        | Values                                                                                         |
-|------------------|----------------|------------------------------------------------------------------------------------------------|
-| `--model`        | grok-imagine-image-2.0 | grok-imagine-image-2.0, grok-imagine-image-quality, grok-imagine-image, grok-2-image |
-| `--aspect-ratio` | (none)         | auto, 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 2:1, 1:2, 19.5:9, 9:19.5, 20:9, 9:20, 21:9, 5:2 |
-| `--resolution`   | (none)         | 1k, 2k                                                                                        |
-| `--quality`      | (none)         | low, medium (grok-imagine-image-2.0 only)                                                     |
+| Flag             | Default                | Values                                                                                     |
+| ---------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
+| `--model`        | grok-imagine-image-2.0 | grok-imagine-image-2.0, grok-imagine-image-quality, grok-imagine-image, grok-2-image       |
+| `--aspect-ratio` | (none)                 | auto, 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 2:1, 1:2, 19.5:9, 9:19.5, 20:9, 9:20, 21:9, 5:2 |
+| `--resolution`   | (none)                 | 1k, 2k                                                                                     |
+| `--quality`      | (none)                 | low, medium (grok-imagine-image-2.0 only)                                                  |
 
 ## Examples
 
 Generate with OpenAI:
+
 ```bash
 image-gen openai --prompt "a cat in a spacesuit" --output ./cat.png
 ```
 
 Generate with Gemini at 16:9:
+
 ```bash
 image-gen gemini -p "sunset over mountains" -o ./sunset.png --aspect-ratio 16:9
 ```
 
 Generate with Grok at 2k:
+
 ```bash
 image-gen grok -p "neon city street" -o ./city.jpg --resolution 2k
 ```
 
 Edit an existing image:
+
 ```bash
 image-gen openai -p "add a rainbow" -o ./edited.png --input ./original.png
 ```
 
 Pipe prompt from stdin:
+
 ```bash
 echo "a peaceful garden" | image-gen gemini -o ./garden.png
 ```
 
 High quality transparent PNG:
+
 ```bash
 image-gen openai -p "logo of a rocket" -o ./logo.png --model gpt-image-1.5 --quality high --background transparent
 ```
@@ -104,11 +110,20 @@ image-gen keys get openai               # Print key value
 image-gen keys delete openai            # Remove a key
 ```
 
-Keys are stored in `~/.config/image-gen/config.json`.
+Keys are stored in macOS Keychain (or Secret Service on Linux) by default:
+
+```bash
+img keys set openai
+img keys set gemini
+img keys set grok
+```
+
+Run `img keys migrate` to move legacy plaintext keys from the user config into the system keyring.
 
 ## Output
 
 On success, the CLI prints JSON:
+
 ```json
 {
   "success": true,

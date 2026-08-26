@@ -65,14 +65,20 @@ export function getMimeType(filePath: string): string {
 }
 
 export function createOpenAIUploadFile(imageData: ArrayBuffer, imagePathOrName: string): File {
-  return new File([imageData], path.basename(imagePathOrName), { type: getMimeType(imagePathOrName) });
+  return new File([imageData], path.basename(imagePathOrName), {
+    type: getMimeType(imagePathOrName),
+  });
 }
 
-export function resolveOutputFormat(provider: Provider, outputPath: string):
-  | { ok: true; format: "png" | "jpeg" | "webp"; mimeType: string }
-  | { ok: false; error: string } {
+export function resolveOutputFormat(
+  provider: Provider,
+  outputPath: string,
+): { ok: true; format: "png" | "jpeg" | "webp"; mimeType: string } | { ok: false; error: string } {
   const ext = path.extname(outputPath).toLowerCase();
-  const providerFormats = OUTPUT_FORMATS[provider] as Record<string, { format: "png" | "jpeg" | "webp"; mimeType: string }>;
+  const providerFormats = OUTPUT_FORMATS[provider] as Record<
+    string,
+    { format: "png" | "jpeg" | "webp"; mimeType: string }
+  >;
   const resolved = providerFormats[ext];
 
   if (!resolved) {
@@ -87,7 +93,9 @@ export function resolveOutputFormat(provider: Provider, outputPath: string):
   return { ok: true, ...resolved };
 }
 
-export async function readImageFile(imagePath: string): Promise<{ data: ArrayBuffer; name: string } | { error: string }> {
+export async function readImageFile(
+  imagePath: string,
+): Promise<{ data: ArrayBuffer; name: string } | { error: string }> {
   const file = Bun.file(imagePath);
   if (!(await file.exists())) {
     return { error: `Input image not found: ${imagePath}` };
@@ -95,7 +103,9 @@ export async function readImageFile(imagePath: string): Promise<{ data: ArrayBuf
   return { data: await file.arrayBuffer(), name: path.basename(imagePath) };
 }
 
-export async function loadInputImages(inputImages?: string[]): Promise<GenerateResult<ReadImageResult[]>> {
+export async function loadInputImages(
+  inputImages?: string[],
+): Promise<GenerateResult<ReadImageResult[]>> {
   if (!inputImages?.length) {
     return { ok: true, data: [] };
   }
@@ -125,7 +135,10 @@ export function toGeminiInlineParts(images: ReadImageResult[]) {
   }));
 }
 
-export async function saveImage(imageData: string, outputPath: string): Promise<{ path: string; bytes: number }> {
+export async function saveImage(
+  imageData: string,
+  outputPath: string,
+): Promise<{ path: string; bytes: number }> {
   const buffer = Buffer.from(imageData, "base64");
   const resolvedPath = path.resolve(outputPath);
   await Bun.write(resolvedPath, buffer);

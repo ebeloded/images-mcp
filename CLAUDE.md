@@ -17,22 +17,24 @@ bun run typecheck      # Type-check
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY` - Required for the `gemini` command
 - `XAI_API_KEY` - Required for the `grok` command
 
-Keys can also be stored via `image-gen keys set <provider> <value>` in `~/.config/image-gen/config.json`.
+Keys are stored in the OS keyring by default via `img keys set <provider>`. Legacy plaintext keys in the user config can be moved with `img keys migrate`.
 
 ## Architecture
 
 This is a CLI for AI image generation across three providers (OpenAI, Google Gemini, xAI Grok).
 
 **File structure**:
-- `cli.ts`: CLI argument parsing, usage/help output, command dispatch.
+
+- `cli.ts`: Commander command definitions, validation, and dispatch.
 - `core.ts`: Re-exports provider generate functions and shared utilities.
 - `openai.ts` / `gemini.ts` / `grok.ts`: Per-provider image generation.
 - `core-utils.ts`: Shared utilities — client helpers, output format resolution, file I/O.
 - `schemas.ts`: Zod schemas and shared parameter constraints/defaults.
 - `metadata.ts`: CLI flag/provider metadata and usage text.
-- `keys.ts` / `config.ts`: API key management and config file handling.
+- `keyring.ts` / `keys.ts` / `config.ts`: OS keyring, migration, and credential resolution.
 
 Behavior highlights:
+
 - CLI prompt input supports `--prompt "...text..."` or piped stdin when `--prompt` is omitted.
 - All providers support generation and editing (via `--input` for reference images).
 - OpenAI uses `images.generate()` for new images and `images.edit()` when input images are provided.

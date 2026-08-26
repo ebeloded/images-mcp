@@ -39,7 +39,7 @@ function getGrok(): GrokClient {
   if (!grokClient) {
     const apiKey = getGrokApiKey();
     if (!apiKey) {
-      throw new Error("Missing XAI_API_KEY environment variable or xai_api_key in config");
+      throw new Error("No xAI API key found. Run 'img keys set grok' or set XAI_API_KEY");
     }
     const baseURL = "https://api.x.ai/v1";
     const openai = new OpenAI({ apiKey, baseURL });
@@ -57,9 +57,11 @@ function getGrok(): GrokClient {
           });
           if (!response.ok) {
             const detail = (await response.text()).trim();
-            throw new Error(`xAI image edit failed (${response.status})${detail ? `: ${detail}` : ""}`);
+            throw new Error(
+              `xAI image edit failed (${response.status})${detail ? `: ${detail}` : ""}`,
+            );
           }
-          return await response.json() as GrokImageResponse;
+          return (await response.json()) as GrokImageResponse;
         },
       },
     };

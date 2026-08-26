@@ -12,8 +12,12 @@ import {
 
 export type OpenAIClient = {
   images: {
-    edit: (params: Parameters<OpenAI["images"]["edit"]>[0]) => Promise<{ data?: Array<{ b64_json?: string }> }>;
-    generate: (params: Parameters<OpenAI["images"]["generate"]>[0]) => Promise<{ data?: Array<{ b64_json?: string }> }>;
+    edit: (
+      params: Parameters<OpenAI["images"]["edit"]>[0],
+    ) => Promise<{ data?: Array<{ b64_json?: string }> }>;
+    generate: (
+      params: Parameters<OpenAI["images"]["generate"]>[0],
+    ) => Promise<{ data?: Array<{ b64_json?: string }> }>;
   };
 };
 
@@ -25,7 +29,11 @@ export function setOpenAIClientForTests(client: OpenAIClient | null) {
 
 function getOpenAI(): OpenAIClient {
   if (!openaiClient) {
-    openaiClient = new OpenAI({ apiKey: getOpenAIApiKey() }) as OpenAIClient;
+    const apiKey = getOpenAIApiKey();
+    if (!apiKey) {
+      throw new Error("No OpenAI API key found. Run 'img keys set openai' or set OPENAI_API_KEY");
+    }
+    openaiClient = new OpenAI({ apiKey }) as OpenAIClient;
   }
   return openaiClient;
 }

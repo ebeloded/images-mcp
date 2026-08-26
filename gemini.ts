@@ -15,9 +15,14 @@ export type GoogleClient = {
     generateContent: (params: {
       model: string;
       contents: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>;
-      config: { responseModalities: string[]; imageConfig?: { aspectRatio?: string; imageSize?: string } };
+      config: {
+        responseModalities: string[];
+        imageConfig?: { aspectRatio?: string; imageSize?: string };
+      };
     }) => Promise<{
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string; inlineData?: { data?: string } }> } }>;
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string; inlineData?: { data?: string } }> };
+      }>;
     }>;
   };
 };
@@ -32,7 +37,9 @@ function getGoogle(): GoogleClient {
   if (!googleClient) {
     const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      throw new Error("Missing gemini_api_key in config or GEMINI_API_KEY / GOOGLE_API_KEY environment variable");
+      throw new Error(
+        "No Gemini API key found. Run 'img keys set gemini' or set GEMINI_API_KEY / GOOGLE_API_KEY",
+      );
     }
     googleClient = new GoogleGenAI({ apiKey }) as GoogleClient;
   }
@@ -61,7 +68,10 @@ export async function generateGeminiImage({
     ...toGeminiInlineParts(loadedImages.data),
   ];
 
-  const config: { responseModalities: string[]; imageConfig?: { aspectRatio?: string; imageSize?: string } } = {
+  const config: {
+    responseModalities: string[];
+    imageConfig?: { aspectRatio?: string; imageSize?: string };
+  } = {
     responseModalities: ["IMAGE", "TEXT"],
   };
 
