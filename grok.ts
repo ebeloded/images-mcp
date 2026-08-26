@@ -4,16 +4,28 @@ import type { GrokParams } from "./schemas.ts";
 import {
   type GenerateResult,
   type GrokResult,
+  getMimeType,
   loadInputImages,
   resolveOutputFormat,
   saveImage,
-  toOpenAIUploadFiles,
 } from "./core-utils.ts";
+
+type GrokImageResponse = { data?: Array<{ b64_json?: string }> };
+type GrokEditParams = {
+  model: string;
+  prompt: string;
+  image?: { url: string; type: "image_url" };
+  images?: Array<{ url: string; type: "image_url" }>;
+  response_format: "b64_json";
+  aspect_ratio?: string;
+  resolution?: string;
+  quality?: string;
+};
 
 export type GrokClient = {
   images: {
-    edit: (params: Parameters<OpenAI["images"]["edit"]>[0]) => Promise<{ data?: Array<{ b64_json?: string }> }>;
-    generate: (params: Parameters<OpenAI["images"]["generate"]>[0]) => Promise<{ data?: Array<{ b64_json?: string }> }>;
+    editJson: (params: GrokEditParams) => Promise<GrokImageResponse>;
+    generate: (params: Parameters<OpenAI["images"]["generate"]>[0]) => Promise<GrokImageResponse>;
   };
 };
 
@@ -29,7 +41,28 @@ function getGrok(): GrokClient {
     if (!apiKey) {
       throw new Error("Missing XAI_API_KEY environment variable or xai_api_key in config");
     }
-    grokClient = new OpenAI({ apiKey, baseURL: "https://api.x.ai/v1" }) as unknown as GrokClient;
+    const baseURL = "https://api.x.ai/v1";
+    const openai = new OpenAI({ apiKey, baseURL });
+    grokClient = {
+      images: {
+        generate: openai.images.generate.bind(openai.images) as GrokClient["images"]["generate"],
+        editJson: async (params) => {
+          const response = await fetch(`${baseURL}/images/edits`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${apiKey}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(params),
+          });
+          if (!response.ok) {
+            const detail = (await response.text()).trim();
+            throw new Error(`xAI image edit failed (${response.status})${detail ? `: ${detail}` : ""}`);
+          }
+          return await response.json() as GrokImageResponse;
+        },
+      },
+    };
   }
   return grokClient;
 }
@@ -41,6 +74,7 @@ export async function generateGrokImage({
   input_images,
   aspect_ratio,
   resolution,
+  quality,
 }: GrokParams): Promise<GenerateResult<GrokResult>> {
   const outputFormat = resolveOutputFormat("grok", output_path);
   if (!outputFormat.ok) {
@@ -55,13 +89,18 @@ export async function generateGrokImage({
   let imageData: string | undefined;
 
   if (loadedImages.data.length > 0) {
-    const imageFiles = toOpenAIUploadFiles(loadedImages.data);
-    const imagePayload = imageFiles.length === 1 ? imageFiles[0]! : imageFiles;
-    const response = await getGrok().images.edit({
+    const imageInputs = loadedImages.data.map((image) => ({
+      url: `data:${getMimeType(image.path)};base64,${Buffer.from(image.data).toString("base64")}`,
+      type: "image_url" as const,
+    }));
+    const response = await getGrok().images.editJson({
       model,
       prompt,
-      image: imagePayload,
+      ...(imageInputs.length === 1 ? { image: imageInputs[0]! } : { images: imageInputs }),
       response_format: "b64_json",
+      ...(aspect_ratio && { aspect_ratio }),
+      ...(resolution && { resolution }),
+      ...(quality && { quality }),
     });
     imageData = response.data?.[0]?.b64_json;
   } else {
@@ -72,6 +111,7 @@ export async function generateGrokImage({
       response_format: "b64_json",
       ...(aspect_ratio && { aspect_ratio }),
       ...(resolution && { resolution }),
+      ...(quality && { quality }),
     } as Parameters<OpenAI["images"]["generate"]>[0]);
     imageData = response.data?.[0]?.b64_json;
   }
@@ -89,6 +129,7 @@ export async function generateGrokImage({
       model,
       aspect_ratio,
       resolution,
+      quality,
       input_images_count: input_images?.length ?? 0,
     },
   };

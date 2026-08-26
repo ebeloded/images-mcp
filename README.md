@@ -105,10 +105,10 @@ OpenAI flags (`img openai`):
 
 | Flag | Required | Default | Allowed values |
 |---|---|---|---|
-| `--model <value>` | no | `gpt-image-2` | `gpt-image-2`, `gpt-image-1.5` |
+| `--model <value>` | no | `gpt-image-2` | `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-1.5` |
 | `--size <value>` | no | `auto` | `auto`, `1024x1024`, `1536x1024`, `1024x1536`, `2048x2048`, `2048x1152`, `3840x2160`, `2160x3840` |
 | `--quality <value>` | no | `auto` | `auto`, `high`, `medium`, `low` |
-| `--background <value>` | no | `auto` | `auto`, `transparent`, `opaque` (note: `transparent` is not supported on `gpt-image-2`) |
+| `--background <value>` | no | `auto` | `auto`, `transparent`, `opaque` (`transparent` requires GPT Image 1.5 and a `.png` or `.webp` output) |
 
 OpenAI output file extensions: `.png`, `.jpg`, `.jpeg`, `.webp`
 
@@ -116,9 +116,9 @@ Gemini flags (`img gemini`):
 
 | Flag | Required | Default | Allowed values |
 |---|---|---|---|
-| `--model <value>` | no | `gemini-3-pro-image-preview` | `gemini-2.5-flash-image`, `gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`, `gemini-3.1-flash-lite-image` |
+| `--model <value>` | no | `gemini-3.1-flash-image` | `gemini-2.5-flash-image`, `gemini-3-pro-image`, `gemini-3.1-flash-image`, `gemini-3.1-flash-lite-image` |
 | `--aspect-ratio <value>` | no | unset | `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `4:5`, `5:4`, `9:16`, `16:9`, `21:9` |
-| `--image-size <value>` | no | unset | `1K`, `2K`, `4K` |
+| `--image-size <value>` | no | unset | `512`, `1K`, `2K`, `4K` (`512` is Flash Image only; Flash Lite supports only `1K`) |
 
 Gemini output file extensions: `.png`
 
@@ -126,9 +126,10 @@ Grok flags (`img grok`):
 
 | Flag | Required | Default | Allowed values |
 |---|---|---|---|
-| `--model <value>` | no | `grok-imagine-image-quality` | `grok-imagine-image-quality`, `grok-imagine-image`, `grok-2-image` |
-| `--aspect-ratio <value>` | no | unset | `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`, `2:1`, `1:2`, `19.5:9`, `9:19.5`, `20:9`, `9:20` |
+| `--model <value>` | no | `grok-imagine-image-2.0` | `grok-imagine-image-2.0`, `grok-imagine-image-quality`, `grok-imagine-image`, `grok-2-image` |
+| `--aspect-ratio <value>` | no | unset | `auto`, `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`, `2:1`, `1:2`, `19.5:9`, `9:19.5`, `20:9`, `9:20`, `21:9`, `5:2` |
 | `--resolution <value>` | no | unset | `1k`, `2k` |
+| `--quality <value>` | no | unset (`medium` server default) | `low`, `medium` (`grok-imagine-image-2.0` only) |
 
 Grok output file extensions: `.jpg`, `.jpeg`
 
@@ -200,7 +201,7 @@ Provider-specific success fields:
 
 - OpenAI: `model`, `size`, `quality`, `input_images_count`
 - Gemini: `model`, `aspect_ratio`, `image_size`, `input_images_count`
-- Grok: `model`, `aspect_ratio`, `resolution`, `input_images_count`
+- Grok: `model`, `aspect_ratio`, `resolution`, `quality`, `input_images_count`
 
 ## Errors and Exit Codes
 

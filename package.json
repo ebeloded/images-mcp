@@ -1,6 +1,7 @@
 {
   "name": "@ebeloded/image-gen",
-  "version": "2.1.5",
+  "version": "2.2.0",
+  "packageManager": "bun@1.4.0",
   "description": "CLI for AI image generation using OpenAI, Google Gemini, and xAI Grok",
   "type": "module",
   "bin": {
@@ -23,7 +24,8 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
-    "ci:check": "bun run test && bun run typecheck"
+    "ci:check": "bun run test && bun run typecheck",
+    "check:pack": "bun pm pack --dry-run"
   },
   "keywords": [
     "ai",
@@ -48,14 +50,12 @@
     "bun": ">=1.0.0"
   },
   "devDependencies": {
-    "@types/bun": "1.3.14"
-  },
-  "peerDependencies": {
-    "typescript": "^5 || ^6"
+    "@types/bun": "1.4.0",
+    "typescript": "7.0.2"
   },
   "dependencies": {
-    "@google/genai": "^2.9.0",
-    "openai": "^6.44.0",
+    "@google/genai": "^2.19.0",
+    "openai": "^7.5.0",
     "zod": "^4.4.3"
   }
 }

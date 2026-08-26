@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   createOpenAIUploadFile,
   generateGeminiImage,
+  generateGrokImage,
   generateOpenAIImage,
   getMimeType,
   resolveOutputFormat,
@@ -177,7 +178,7 @@ describe("core provider request mapping", () => {
     const result = await generateGeminiImage({
       prompt: "gemini prompt",
       output_path: outputPath,
-      model: "gemini-3-pro-image-preview",
+      model: "gemini-3-pro-image",
       input_images: [inputPath],
       aspect_ratio: "16:9",
       image_size: "2K",
@@ -189,10 +190,10 @@ describe("core provider request mapping", () => {
       expect(result.data.input_images_count).toBe(1);
     }
 
-    expect(request?.model).toBe("gemini-3-pro-image-preview");
+    expect(request?.model).toBe("gemini-3-pro-image");
   });
 
-  it("generates with gemini-3.1-flash-image-preview (Nano Banana 2)", async () => {
+  it("generates with gemini-3.1-flash-image (Nano Banana 2)", async () => {
     const outputPath = tempPath("gemini-nb2-output.png");
     let request: Record<string, unknown> | undefined;
 
@@ -213,11 +214,11 @@ describe("core provider request mapping", () => {
     const result = await generateGeminiImage({
       prompt: "nano banana test",
       output_path: outputPath,
-      model: "gemini-3.1-flash-image-preview",
+      model: "gemini-3.1-flash-image",
     });
 
     expect(result.ok).toBe(true);
-    expect(request?.model).toBe("gemini-3.1-flash-image-preview");
+    expect(request?.model).toBe("gemini-3.1-flash-image");
     const contents = request?.contents as Array<Record<string, unknown>>;
     expect(contents[0]?.text).toBe("nano banana test");
     const config = request?.config as Record<string, unknown>;
@@ -250,5 +251,75 @@ describe("core provider request mapping", () => {
 
     expect(result.ok).toBe(true);
     expect(request?.model).toBe("gemini-3.1-flash-lite-image");
+  });
+
+  it("maps Grok Imagine 2.0 generation controls", async () => {
+    const outputPath = tempPath("grok-2-output.jpg");
+    let generateArgs: Record<string, unknown> | undefined;
+
+    setClientsForTests({
+      grok: {
+        images: {
+          editJson: async () => ({ data: [{ b64_json: "" }] }),
+          generate: async (params) => {
+            generateArgs = params as unknown as Record<string, unknown>;
+            return { data: [{ b64_json: Buffer.from("grok-2").toString("base64") }] };
+          },
+        },
+      },
+    });
+
+    const result = await generateGrokImage({
+      prompt: "grok prompt",
+      output_path: outputPath,
+      model: "grok-imagine-image-2.0",
+      aspect_ratio: "21:9",
+      resolution: "2k",
+      quality: "low",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(generateArgs?.model).toBe("grok-imagine-image-2.0");
+    expect(generateArgs?.aspect_ratio).toBe("21:9");
+    expect(generateArgs?.resolution).toBe("2k");
+    expect(generateArgs?.quality).toBe("low");
+    expect(generateArgs?.response_format).toBe("b64_json");
+  });
+
+  it("maps Grok edits to the required JSON data-URI request", async () => {
+    const inputPath = tempPath("grok-edit-input.png");
+    const outputPath = tempPath("grok-edit-output.jpg");
+    await Bun.write(inputPath, new Uint8Array([1, 2, 3]));
+    let editArgs: Record<string, unknown> | undefined;
+
+    setClientsForTests({
+      grok: {
+        images: {
+          editJson: async (params) => {
+            editArgs = params as unknown as Record<string, unknown>;
+            return { data: [{ b64_json: Buffer.from("grok-edit").toString("base64") }] };
+          },
+          generate: async () => ({ data: [{ b64_json: "" }] }),
+        },
+      },
+    });
+
+    const result = await generateGrokImage({
+      prompt: "edit this",
+      output_path: outputPath,
+      model: "grok-imagine-image-2.0",
+      input_images: [inputPath],
+      aspect_ratio: "1:1",
+      resolution: "1k",
+      quality: "medium",
+    });
+
+    expect(result.ok).toBe(true);
+    const image = editArgs?.image as { url?: string; type?: string } | undefined;
+    expect(image?.type).toBe("image_url");
+    expect(image?.url).toStartWith("data:image/png;base64,");
+    expect(editArgs?.aspect_ratio).toBe("1:1");
+    expect(editArgs?.resolution).toBe("1k");
+    expect(editArgs?.quality).toBe("medium");
   });
 });

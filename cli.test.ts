@@ -116,6 +116,21 @@ describe("parseArgs validation", () => {
     }
   });
 
+  it("accepts the pinned GPT Image 2 snapshot", () => {
+    const parsed = parseArgs(["openai", "--prompt", "test", "--output", "out.png", "--model", "gpt-image-2-2026-04-21"]);
+    expect(parsed.mode).toBe("openai");
+  });
+
+  it("rejects unsupported transparent OpenAI output combinations before the API call", () => {
+    const gpt2 = parseArgs(["openai", "--prompt", "test", "--output", "out.png", "--background", "transparent"]);
+    expect(gpt2.mode).toBe("help");
+    if (gpt2.mode === "help") expect(gpt2.message).toContain("transparent backgrounds are not supported");
+
+    const jpeg = parseArgs(["openai", "--prompt", "test", "--output", "out.jpg", "--model", "gpt-image-1.5", "--background", "transparent"]);
+    expect(jpeg.mode).toBe("help");
+    if (jpeg.mode === "help") expect(jpeg.message).toContain("output must use .png or .webp");
+  });
+
   it("accepts valid Gemini args and keeps optional values", () => {
     const parsed = parseArgs([
       "gemini",
@@ -130,9 +145,34 @@ describe("parseArgs validation", () => {
     ]);
     expect(parsed.mode).toBe("gemini");
     if (parsed.mode === "gemini") {
+      expect(parsed.params.model).toBe("gemini-3.1-flash-image");
       expect(parsed.params.aspect_ratio).toBe("16:9");
       expect(parsed.params.image_size).toBe("2K");
     }
+  });
+
+  it("enforces Gemini model-specific image sizes", () => {
+    const lite = parseArgs(["gemini", "--prompt", "test", "--output", "out.png", "--model", "gemini-3.1-flash-lite-image", "--image-size", "2K"]);
+    expect(lite.mode).toBe("help");
+    if (lite.mode === "help") expect(lite.message).toContain("only 1K is supported");
+
+    const compact = parseArgs(["gemini", "--prompt", "test", "--output", "out.png", "--model", "gemini-3-pro-image", "--image-size", "512"]);
+    expect(compact.mode).toBe("help");
+    if (compact.mode === "help") expect(compact.message).toContain("only supported by gemini-3.1-flash-image");
+  });
+
+  it("defaults Grok to Imagine 2.0 and validates model-specific quality", () => {
+    const parsed = parseArgs(["grok", "--prompt", "test", "--output", "out.jpg", "--quality", "low", "--aspect-ratio", "5:2"]);
+    expect(parsed.mode).toBe("grok");
+    if (parsed.mode === "grok") {
+      expect(parsed.params.model).toBe("grok-imagine-image-2.0");
+      expect(parsed.params.quality).toBe("low");
+      expect(parsed.params.aspect_ratio).toBe("5:2");
+    }
+
+    const oldModel = parseArgs(["grok", "--prompt", "test", "--output", "out.jpg", "--model", "grok-imagine-image-quality", "--quality", "low"]);
+    expect(oldModel.mode).toBe("help");
+    if (oldModel.mode === "help") expect(oldModel.message).toContain("only supported by grok-imagine-image-2.0");
   });
 });
 
